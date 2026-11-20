@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<!--
+  index.html — La app instalable (PWA) de Permutas.
+  LECCIÓN: Apps Script no permite que su página sea instalable (no deja servir el
+  «manifest» ni registrar un «service worker»). Por eso esta página, alojada en
+  GitHub Pages, es un «cascarón» instalable: muestra la app de Apps Script por
+  dentro, a pantalla completa, con el mismo enlace y los mismos datos.
+  Solo se edita config.js.
+-->
+<html lang="es-CO">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>App de Permutas SED</title>
+  <meta name="description" content="Encuentra permutas entre docentes, directivos docentes y administrativos de colegios públicos. Aplicación no oficial.">
+  <meta name="theme-color" content="#F3F5F4">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="iconos/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="iconos/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="iconos/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Permutas SED">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <style>
+    :root{--papel:#F3F5F4;--tinta:#13232E;--tinta-2:#43545E;--borde:#D3DCD9;--l1:#FFC21A;--l2:#00807A;color-scheme:light}
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;background:var(--papel);color:var(--tinta);font:400 1.0625rem/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+    body{display:flex;flex-direction:column;height:100dvh;padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
+    #app{flex:1;width:100%;border:0;display:block;background:var(--papel)}
+    .pantalla{flex:1;display:grid;place-items:center;padding:24px;text-align:center}
+    .pantalla > div{max-width:420px}
+    .pantalla svg{width:88px;height:88px}
+    h1{font-size:1.5rem;line-height:1.2;margin:16px 0 8px}
+    p{margin:0 0 16px;color:var(--tinta-2)}
+    button,.boton{font-family:inherit;font-weight:600;font-size:1rem;line-height:1;min-height:44px;padding:0 20px;border-radius:999px;border:2px solid var(--tinta);background:var(--tinta);color:#fff;cursor:pointer}
+    .boton-suave{background:transparent;color:var(--tinta)}
+    :focus-visible{outline:3px solid var(--tinta);outline-offset:3px}
+    #instalar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 14px;background:#FFF1C7;border-bottom:1px solid var(--borde);font-size:.95rem}
+    #instalar[hidden]{display:none}
+    #instalar span{flex:1 1 220px}
+    #instalar button{min-height:40px;padding:0 16px}
+    .cargando{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none}
+    .cargando i{display:inline-block;width:12px;height:12px;margin:0 4px;border-radius:50%;background:var(--l2)}
+    @media (prefers-reduced-motion:no-preference){.cargando i{animation:latir 1s infinite ease-in-out}.cargando i:nth-child(2){animation-delay:.15s;background:var(--l1)}.cargando i:nth-child(3){animation-delay:.3s}}
+    @keyframes latir{50%{transform:scale(.5);opacity:.5}}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+  <div id="instalar" role="region" aria-label="Instalar la aplicación" hidden>
+    <span id="instalar-texto">Instala Permutas SED en tu dispositivo para abrirla como una app.</span>
+    <button type="button" id="btn-instalar">Instalar</button>
+    <button type="button" id="btn-ahora-no" class="boton-suave">Ahora no</button>
+  </div>
+
+  <iframe id="app" title="App de Permutas SED" allow="clipboard-write" referrerpolicy="strict-origin-when-cross-origin" hidden></iframe>
+  <div class="cargando" id="cargando" aria-hidden="true"><div><i></i><i></i><i></i></div></div>
+
+  <main class="pantalla" id="sin-conexion" hidden>
+    <div>
+      <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M5 30 C14 30 26 10 35 10" stroke="#FFC21A" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M5 10 C14 10 26 30 35 30" stroke="#00807A" stroke-width="6" fill="none" stroke-linecap="round"/><circle cx="20" cy="20" r="5" fill="#fff" stroke="#13232E" stroke-width="3"/></svg>
+      <h1>Sin conexión</h1>
+      <p>Permutas necesita internet: tus datos están guardados en línea. Cuando vuelva la conexión, la app se abrirá sola.</p>
+      <button type="button" id="btn-reintentar">Intentar de nuevo</button>
+    </div>
+  </main>
+
+  <main class="pantalla" id="sin-config" hidden>
+    <div>
+      <h1>Falta un paso</h1>
+      <p>Abre el archivo <b>config.js</b> y pega el enlace de la app de Apps Script, el que termina en <b>/exec</b>.</p>
+    </div>
+  </main>
+
+  <div id="estado" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div>
+
+  <script src="config.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var $ = function (id) { return document.getElementById(id); };
+    var cfg = window.PERMUTA_CONFIG || {};
+    var marco = $('app'), sinConexion = $('sin-conexion'), cargando = $('cargando');
+    var cargada = false;
+
+    /* 1. El enlace de la app: debe ser una dirección de Apps Script que termine en /exec. */
+    var url = String(cfg.urlApp || '');
+    // Con cuenta personal: script.google.com/macros/s/…/exec; con Workspace: script.google.com/a/macros/dominio/s/…/exec
+    var valida = /^https:\/\/script\.google\.com\/(a\/macros\/[^/]+|macros)\/s\/[A-Za-z0-9_-]+\/exec$/.test(url);
+    if (!valida) { $('sin-config').hidden = false; cargando.hidden = true; return; }
+    // «origen=pwa» le dice a la app que ya está instalada (así no muestra el botón para instalar).
+    var src = url + '?origen=pwa';
+
+    /* 2. Cargar la app, o mostrar «Sin conexión» si no hay internet.
+       LECCIÓN: «navigator.onLine» solo dice si hay red, no si hay internet (por ejemplo, un
+       wifi sin servicio). Por eso, además, pedimos un archivo pequeño a este mismo sitio
+       saltándonos la copia guardada («sinCopia»): si no llega en 6 segundos, no hay internet. */
+    function hayInternet() {
+      if (!navigator.onLine) return Promise.resolve(false);
+      var prueba = fetch('config.js?sinCopia=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.ok; }, function () { return false; });
+      var espera = new Promise(function (ok) { setTimeout(function () { ok(false); }, 6000); });
+      return Promise.race([prueba, espera]);
+    }
+    function abrir() {
+      return hayInternet().then(function (hay) {
+        if (!hay) return mostrarSinConexion();
+        sinConexion.hidden = true; marco.hidden = false;
+        if (!cargada) { cargando.hidden = false; marco.src = src; }
+      });
+    }
+    function mostrarSinConexion() {
+      cargando.hidden = true;
+      // Si la app ya estaba abierta, no se destruye: se tapa y vuelve igual (no se pierde lo escrito).
+      marco.hidden = true; sinConexion.hidden = false;
+      $('estado').textContent = 'Sin conexión a internet.';
+    }
+    marco.addEventListener('load', function () { cargada = true; cargando.hidden = true; });
+    window.addEventListener('offline', mostrarSinConexion);
+    window.addEventListener('online', function () { $('estado').textContent = 'Conexión recuperada.'; abrir(); });
+    $('btn-reintentar').addEventListener('click', function () {
+      $('estado').textContent = 'Comprobando la conexión…';
+      abrir().then(function () { if (!sinConexion.hidden) $('estado').textContent = 'Todavía no hay conexión.'; });
+    });
+    abrir();
+
+    /* 3. Copia para abrir sin internet (service worker). */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { /* sin copia: la app igual funciona en línea */ }); });
+    }
+
+    /* 4. Invitación a instalar: Chrome y Edge avisan con «beforeinstallprompt»; en iPhone se explica a mano. */
+    var CLAVE = 'permuta.pwa.instalarOculto';
+    var oculto = function () { try { return localStorage.getItem(CLAVE) === 'si'; } catch (e) { return false; } };
+    var instalada = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    var aviso = null;
+    function cerrarBarra() { $('instalar').hidden = true; try { localStorage.setItem(CLAVE, 'si'); } catch (e) { /* nada */ } }
+    $('btn-ahora-no').addEventListener('click', cerrarBarra);
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault(); aviso = e;
+      if (!instalada && !oculto()) $('instalar').hidden = false;
+    });
+    $('btn-instalar').addEventListener('click', function () {
+      if (!aviso) { cerrarBarra(); return; }
+      aviso.prompt();
+      aviso.userChoice.then(function () { aviso = null; cerrarBarra(); });
+    });
+    window.addEventListener('appinstalled', cerrarBarra);
+    var esIphone = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (esIphone && !instalada && !oculto()) {
+      $('instalar-texto').textContent = 'Para instalarla: toca Compartir y luego «Agregar a inicio».';
+      $('btn-instalar').hidden = true;
+      $('btn-ahora-no').textContent = 'Entendido';
+      $('instalar').hidden = false;
+    }
+  })();
+  </script>
+</body>
+</html>
